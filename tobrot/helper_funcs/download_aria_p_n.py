@@ -36,7 +36,7 @@ async def aria_start():
     aria2_daemon_start_cmd = []
     # start the daemon, aria2c command
     aria2_daemon_start_cmd.append("aria2c")
-    # aria2_daemon_start_cmd.append("--allow-overwrite=true")
+    aria2_daemon_start_cmd.append("--allow-overwrite=true")
     aria2_daemon_start_cmd.append("--daemon=true")
     # aria2_daemon_start_cmd.append(f"--dir={DOWNLOAD_LOCATION}")
     # TODO: this does not work, need to investigate this.
@@ -50,8 +50,9 @@ async def aria_start():
     aria2_daemon_start_cmd.append("--rpc-max-request-size=1024M")
     aria2_daemon_start_cmd.append("--seed-ratio=0.0")
     aria2_daemon_start_cmd.append("--seed-time=1")
+    aria2_daemon_start_cmd.append("--max-overall-upload-limit=1K")
     aria2_daemon_start_cmd.append("--split=10")
-    aria2_daemon_start_cmd.append(f"--bt-stop-timeout={MAX_TIME_TO_WAIT_FOR_TORRENTS_TO_START}")
+    #aria2_daemon_start_cmd.append(f"--bt-stop-timeout={MAX_TIME_TO_WAIT_FOR_TORRENTS_TO_START}")
     #
     LOGGER.info(aria2_daemon_start_cmd)
     #
@@ -107,7 +108,7 @@ def add_torrent(aria_instance, torrent_file_path):
         else:
             return True, "" + download.gid + ""
     else:
-        return False, "**FAILED** \n" + str(e) + " \nPlease try other sources to get workable link"
+        return False, "**FAILED** \nPlease try other sources to get workable link"
 
 
 def add_url(aria_instance, text_url, c_file_name):
@@ -174,6 +175,7 @@ async def call_apropriate_function(
     await asyncio.sleep(1)
     file = aria_instance.get_download(err_message)
     to_upload_file = file.name
+    com_g = file.is_complete
     #
     if is_zip:
         # first check if current free space allows this
@@ -214,13 +216,14 @@ async def call_apropriate_function(
     response = {}
     LOGGER.info(response)
     user_id = user_message.from_user.id
-    print(user_id)
-    final_response = await upload_to_tg(
-        sent_message_to_update_tg_p,
-        to_upload_file,
-        user_id,
-        response
-    )
+    #LOGGER.info(user_id)
+    if com_g:
+        final_response = await upload_to_tg(
+            sent_message_to_update_tg_p,
+            to_upload_file,
+            user_id,
+            response
+        )
     LOGGER.info(final_response)
     try:
         message_to_send = ""
@@ -296,6 +299,7 @@ async def call_apropriate_function_g(
     await asyncio.sleep(1)
     file = aria_instance.get_download(err_message)
     to_upload_file = file.name
+    com_gau = file.is_complete
     #
     if is_zip:
         # first check if current free space allows this
@@ -336,13 +340,14 @@ async def call_apropriate_function_g(
     response = {}
     LOGGER.info(response)
     user_id = user_message.from_user.id
-    print(user_id)
-    final_response = await upload_to_gdrive(
-        to_upload_file,
-        sent_message_to_update_tg_p,
-        user_message,
-        user_id
-    )
+    LOGGER.info(user_id)
+    if com_gau:
+        final_response = await upload_to_gdrive(
+            to_upload_file,
+            sent_message_to_update_tg_p,
+            user_message,
+            user_id
+        )
 #
 async def call_apropriate_function_t(
     to_upload_file_g,
@@ -438,19 +443,23 @@ async def check_progress_for_dl(aria2, gid, event, previous_message):
                 except:
                     pass
                 #
-                msg = f"\nDownloading File: `{downloading_dir_name}`"
-                msg += f"\nSpeed: {file.download_speed_string()} 🔽 / {file.upload_speed_string()} 🔼"
-                msg += f"\nProgress: {file.progress_string()}"
-                msg += f"\nTotal Size: {file.total_length_string()}"
-
                 if is_file is None :
-                   msg += f"\n<b>Connections:</b> {file.connections}"
+                   msgg = f"Conn: {file.connections} <b>|</b> GID: <code>{gid}</code>"
                 else :
-                   msg += f"\n<b>Info:</b>[ P : {file.connections} || S : {file.num_seeders} ]"
+                   msgg = f"P: {file.connections} | S: {file.num_seeders} <b>|</b> GID: <code>{gid}</code>"
+                msg = f"\n`{downloading_dir_name}`"
+                msg += f"\n<b>Speed</b>: {file.download_speed_string()}"
+                msg += f"\n<b>Status</b>: {file.progress_string()} <b>of</b> {file.total_length_string()} <b>|</b> {file.eta_string()} <b>|</b> {msgg}"
+                #msg += f"\nSize: {file.total_length_string()}"
 
-                # msg += f"\nStatus: {file.status}"
-                msg += f"\nETA: {file.eta_string()}"
-                msg += f"\nGID: <code>{gid}</code>"
+                #if is_file is None :
+                   #msg += f"\n<b>Conn:</b> {file.connections}, GID: <code>{gid}</code>"
+                #else :
+                   #msg += f"\n<b>Info:</b>[ P : {file.connections} | S : {file.num_seeders} ], GID: <code>{gid}</code>"
+
+                #msg += f"\nStatus: {file.status}"
+                #msg += f"\nETA: {file.eta_string()}"
+                #msg += f"\nGID: <code>{gid}</code>"
                 inline_keyboard = []
                 ikeyboard = []
                 ikeyboard.append(InlineKeyboardButton("Cancel 🚫", callback_data=(f"cancel {gid}").encode("UTF-8")))
@@ -470,7 +479,7 @@ async def check_progress_for_dl(aria2, gid, event, previous_message):
             await check_progress_for_dl(aria2, gid, event, previous_message)
         else:
             await asyncio.sleep(EDIT_SLEEP_TIME_OUT)
-            await event.edit(f"File Downloaded Successfully: `{file.name}`")
+            await event.edit(f"Downloaded Successfully: `{file.name}`")
             return True
     except Exception as e:
         LOGGER.info(str(e))
